@@ -156,9 +156,10 @@ func (t *Terminal) Write(s string) {
 func (t *Terminal) Flush() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// Clear entire screen then write buffer
-	os.Stdout.WriteString("\033[2J\033[H")
+	// Home cursor and hide it during redraw to avoid flicker
+	os.Stdout.WriteString("\033[?25l\033[H")
 	os.Stdout.WriteString(t.buf.String())
+	os.Stdout.WriteString("\033[?25h")
 }
 
 // ─── Input ───────────────────────────────────────────────────────────────────

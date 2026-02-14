@@ -337,6 +337,10 @@ func (a *App) Render() {
 	t.Fg(ColBorder)
 	t.MoveTo(0, footerY)
 	t.Write(rep("─", W))
+	ver := "v" + Version
+	t.Fg(ColTextMut)
+	t.MoveTo(W-len(ver)-1, footerY)
+	t.Write(ver)
 
 	t.ResetStyle()
 	t.Bg(ColPanel)
