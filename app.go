@@ -156,7 +156,63 @@ func (a *App) Init() {
 	a.installed = a.backend.IsInstalled()
 	if a.installed {
 		a.profile = a.backend.GetProfile()
+		kbd := a.backend.GetKbdBrightness()
+		for i, v := range kbdValues {
+			if v == kbd {
+				a.kbdLevel = i
+				break
+			}
+		}
+		a.chargeLimit = a.backend.GetChargeLimit()
+		if aura := a.backend.GetAuraState(); aura != nil {
+			a.initAuraState(aura)
+		}
 	}
+}
+
+func (a *App) initAuraState(aura *AuraState) {
+	// Map config mode names (e.g. "RainbowCycle") to display names ("Rainbow Cycle")
+	modeMap := map[string]string{
+		"RainbowCycle": "Rainbow Cycle",
+		"RainbowWave":  "Rainbow Wave",
+	}
+	displayMode := aura.Mode
+	if mapped, ok := modeMap[aura.Mode]; ok {
+		displayMode = mapped
+	}
+	for i, m := range auraModes {
+		if m == displayMode {
+			a.auraMode = i
+			break
+		}
+	}
+
+	a.auraColour1 = closestAuraColour(aura.R1, aura.G1, aura.B1)
+	a.auraColour2 = closestAuraColour(aura.R2, aura.G2, aura.B2)
+
+	speedLo := strings.ToLower(aura.Speed)
+	for i, s := range auraSpeeds {
+		if s == speedLo {
+			a.auraSpeed = i
+			break
+		}
+	}
+}
+
+func closestAuraColour(r, g, b int) int {
+	best := 0
+	bestDist := 1<<31 - 1
+	for i, c := range auraColours {
+		dr := int(c.Rgb.R) - r
+		dg := int(c.Rgb.G) - g
+		db := int(c.Rgb.B) - b
+		dist := dr*dr + dg*dg + db*db
+		if dist < bestDist {
+			bestDist = dist
+			best = i
+		}
+	}
+	return best
 }
 
 func (a *App) SetStatus(msg string, ok bool) {

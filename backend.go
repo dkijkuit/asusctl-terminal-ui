@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -86,6 +88,19 @@ func (b *Backend) ListProfiles() (bool, string) {
 
 // ─── Keyboard Brightness ─────────────────────────────────────────────────────
 
+func (b *Backend) GetKbdBrightness() string {
+	ok, out := b.run("leds", "get")
+	if ok {
+		lo := strings.ToLower(out)
+		for _, level := range []string{"off", "low", "med", "high"} {
+			if strings.Contains(lo, level) {
+				return level
+			}
+		}
+	}
+	return "med"
+}
+
 func (b *Backend) SetKbdBrightness(level string) (bool, string) {
 	return b.run("leds", "set", level)
 }
@@ -100,6 +115,20 @@ func (b *Backend) PrevKbdBrightness() (bool, string) {
 
 // ─── Battery ─────────────────────────────────────────────────────────────────
 
+func (b *Backend) GetChargeLimit() int {
+	ok, out := b.run("battery", "info")
+	if ok {
+		// "Current battery charge limit: 70%"
+		for _, field := range strings.Fields(out) {
+			field = strings.TrimSuffix(field, "%")
+			if v, err := strconv.Atoi(field); err == nil && v >= 20 && v <= 100 {
+				return v
+			}
+		}
+	}
+	return 80
+}
+
 func (b *Backend) SetChargeLimit(pct int) (bool, string) {
 	pct = clamp(pct, 20, 100)
 	return b.run("battery", "limit", strconv.Itoa(pct))
@@ -110,6 +139,117 @@ func (b *Backend) ToggleOneShotCharge() (bool, string) {
 }
 
 // ─── Aura RGB ────────────────────────────────────────────────────────────────
+
+type AuraState struct {
+	Mode    string // e.g. "Static", "Breathe"
+	R1, G1, B1 int
+	R2, G2, B2 int
+	Speed   string // "Low", "Med", "High"
+}
+
+func (b *Backend) GetAuraState() *AuraState {
+	configs, _ := filepath.Glob("/etc/asusd/aura_*.ron")
+	if len(configs) == 0 {
+		return nil
+	}
+	data, err := os.ReadFile(configs[0])
+	if err != nil {
+		return nil
+	}
+	content := string(data)
+
+	// Parse current_mode
+	mode := parseRonField(content, "current_mode")
+	if mode == "" {
+		return nil
+	}
+
+	// Find the block for the current mode
+	idx := strings.Index(content, mode+": (")
+	if idx < 0 {
+		// Try after current_mode line to skip it
+		after := strings.Index(content, "builtins:")
+		if after >= 0 {
+			sub := content[after:]
+			idx2 := strings.Index(sub, mode+": (")
+			if idx2 >= 0 {
+				idx = after + idx2
+			}
+		}
+	}
+	if idx < 0 {
+		return nil
+	}
+
+	// Extract the block for this mode (find matching closing paren)
+	block := content[idx:]
+	depth := 0
+	end := -1
+	for i, ch := range block {
+		if ch == '(' {
+			depth++
+		} else if ch == ')' {
+			depth--
+			if depth == 0 {
+				end = i + 1
+				break
+			}
+		}
+	}
+	if end < 0 {
+		return nil
+	}
+	block = block[:end]
+
+	// Parse colour1 and colour2 blocks
+	r1, g1, b1 := parseRonColour(block, "colour1")
+	r2, g2, b2 := parseRonColour(block, "colour2")
+	speed := parseRonField(block, "speed")
+
+	return &AuraState{
+		Mode: mode,
+		R1: r1, G1: g1, B1: b1,
+		R2: r2, G2: g2, B2: b2,
+		Speed: speed,
+	}
+}
+
+func parseRonField(s, field string) string {
+	prefix := field + ": "
+	idx := strings.Index(s, prefix)
+	if idx < 0 {
+		return ""
+	}
+	rest := s[idx+len(prefix):]
+	end := strings.IndexAny(rest, ",\n)")
+	if end < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:end])
+}
+
+func parseRonColour(block, name string) (int, int, int) {
+	idx := strings.Index(block, name+": (")
+	if idx < 0 {
+		return 0, 0, 0
+	}
+	sub := block[idx:]
+	end := strings.Index(sub, "),")
+	if end < 0 {
+		end = strings.Index(sub[1:], ")")
+		if end >= 0 {
+			end += 1
+		}
+	}
+	if end < 0 {
+		return 0, 0, 0
+	}
+	sub = sub[:end]
+	r, _ := strconv.Atoi(parseRonField(sub, "r"))
+	g, _ := strconv.Atoi(parseRonField(sub, "g"))
+	b, _ := strconv.Atoi(parseRonField(sub, "b"))
+	return r, g, b
+}
 
 func (b *Backend) SetAuraMode(mode, colour1, colour2, speed string) (bool, string) {
 	// Convert display name to CLI subcommand: "Rainbow Cycle" → "rainbow-cycle"
