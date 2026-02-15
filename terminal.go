@@ -156,10 +156,16 @@ func (t *Terminal) Write(s string) {
 func (t *Terminal) Flush() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// Home cursor and hide it during redraw to avoid flicker
-	os.Stdout.WriteString("\033[?25l\033[H")
-	os.Stdout.WriteString(t.buf.String())
-	os.Stdout.WriteString("\033[?25h")
+	// Use synchronized output (DEC 2026) to eliminate flicker.
+	// The terminal holds all rendering until the end marker, then
+	// paints the entire frame at once. Supported by all modern terminals;
+	// unsupported terminals silently ignore the sequences.
+	w := bufio.NewWriterSize(os.Stdout, t.buf.Len()+64)
+	w.WriteString("\033[?2026h") // begin synchronized update
+	w.WriteString("\033[H")      // home cursor
+	w.WriteString(t.buf.String())
+	w.WriteString("\033[?2026l") // end synchronized update — terminal renders now
+	w.Flush()
 }
 
 // ─── Input ───────────────────────────────────────────────────────────────────

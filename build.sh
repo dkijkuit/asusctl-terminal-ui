@@ -10,7 +10,8 @@ if ! command -v go &>/dev/null; then
     exit 1
 fi
 
-go build -ldflags="-s -w" -o "${APP}" .
+BUILD_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+go build -ldflags="-s -w -X main.BuildVersion=${BUILD_VERSION}" -o "${APP}" .
 echo "Built ./${APP} ($(du -h ${APP} | cut -f1))"
 echo ""
 echo "Run:      ./${APP}"

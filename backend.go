@@ -302,6 +302,51 @@ func (b *Backend) EnableFanCurves(profile string, enable bool) (bool, string) {
 	return b.run("fan-curve", "--mod-profile", profile, "--enable-fan-curves", fmt.Sprintf("%v", enable))
 }
 
+// GetFanEnabled checks if any fan curve is enabled for the active profile.
+func (b *Backend) GetFanEnabled() bool {
+	ok, out := b.run("fan-curve", "--get-enabled")
+	if !ok {
+		return false
+	}
+	return strings.Contains(out, "enabled: true")
+}
+
+// ParseFanCurveSpeeds parses pwm values from --mod-profile output and returns
+// CPU speeds and GPU speeds as percentages (0-100).
+func (b *Backend) ParseFanCurveSpeeds(profile string) (cpu [8]int, gpu [8]int) {
+	ok, out := b.GetFanCurves(profile)
+	if !ok {
+		return
+	}
+	// Parse pwm lines: "pwm: (38, 64, ...)"
+	fans := []*[8]int{&cpu, &gpu}
+	fanIdx := 0
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "pwm:") {
+			continue
+		}
+		if fanIdx >= 2 {
+			break
+		}
+		// Extract values between ( and )
+		start := strings.Index(line, "(")
+		end := strings.Index(line, ")")
+		if start < 0 || end < 0 {
+			continue
+		}
+		parts := strings.Split(line[start+1:end], ",")
+		for i := 0; i < 8 && i < len(parts); i++ {
+			v, err := strconv.Atoi(strings.TrimSpace(parts[i]))
+			if err == nil {
+				fans[fanIdx][i] = v * 100 / 255 // pwm 0-255 → percent 0-100
+			}
+		}
+		fanIdx++
+	}
+	return
+}
+
 func FormatFanCurve(temps []int, speeds []int) string {
 	parts := make([]string, len(temps))
 	for i := range temps {

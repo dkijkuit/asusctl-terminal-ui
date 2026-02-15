@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 ```bash
-# Build (produces stripped binary in current dir)
-go build -ldflags="-s -w" -o asusctl-gui .
+# Build (produces stripped binary in current dir, with git build version)
+go build -ldflags="-s -w -X main.BuildVersion=$(git rev-parse --short HEAD)" -o asusctl-gui .
 
 # Or use the build script
 ./build.sh

@@ -167,6 +167,8 @@ func (a *App) Init() {
 		if aura := a.backend.GetAuraState(); aura != nil {
 			a.initAuraState(aura)
 		}
+		a.fanEnabled = a.backend.GetFanEnabled()
+		a.fanSpeeds[0], a.fanSpeeds[1] = a.backend.ParseFanCurveSpeeds(a.profile)
 	}
 }
 
@@ -337,7 +339,7 @@ func (a *App) Render() {
 	t.Fg(ColBorder)
 	t.MoveTo(0, footerY)
 	t.Write(rep("─", W))
-	ver := "v" + Version
+	ver := "v" + fullVersion()
 	t.Fg(ColTextMut)
 	t.MoveTo(W-len(ver)-1, footerY)
 	t.Write(ver)
@@ -1102,7 +1104,7 @@ func (a *App) renderFans(y, h int) {
 	// Point value display
 	infoY := graphY + graphH + 3
 	t.Text(cx, infoY, ColTextDim,
-		fmt.Sprintf("Point %d: %d°C → %d%%   (↑↓ speed, ←→ point, Tab fan, Enter apply)",
+		fmt.Sprintf("Point %d: %d°C → %d%%   (↑↓ speed, ←→ point, Tab fan, Enter apply, e toggle)",
 			a.focusIdx+1, a.fanTemps[a.focusIdx], speeds[a.focusIdx]))
 
 	// Presets
@@ -1136,6 +1138,17 @@ func (a *App) handleFans(key KeyEvent) {
 		}
 		ok, out := a.backend.SetFanCurve(fan, a.profile, data)
 		if ok {
+			// Also enable custom fan curves so the curve actually takes effect
+			if !a.fanEnabled {
+				eok, eout := a.backend.EnableFanCurves(a.profile, true)
+				if eok {
+					a.fanEnabled = true
+				} else {
+					a.SetStatus("Curve set but enable failed: "+eout, false)
+					a.addLog("fan-curve --enable-fan-curves true", eout, false)
+					return
+				}
+			}
 			a.SetStatus(fmt.Sprintf("Fan curve applied (%s)", strings.ToUpper(fan)), true)
 		} else {
 			a.SetStatus("Failed: "+out, false)

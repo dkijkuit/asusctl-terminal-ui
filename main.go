@@ -7,7 +7,17 @@ import (
 	"syscall"
 )
 
-const Version = "0.1.0"
+// Version is the base semantic version. BuildVersion is appended at build time
+// via -ldflags (e.g. git short hash), producing "0.1.0+abc1234".
+var Version = "0.1.0"
+var BuildVersion = ""
+
+func fullVersion() string {
+	if BuildVersion != "" {
+		return Version + "+" + BuildVersion
+	}
+	return Version
+}
 
 func main() {
 	term := NewTerminal()
@@ -55,8 +65,10 @@ func main() {
 		// Read key (with timeout from raw mode settings)
 		key := ReadKey()
 		if key.Type == KeyChar && key.Char == 0 {
-			// Timeout — re-render to update status messages, etc.
-			app.Render()
+			// Timeout — only re-render if there's a status message to clear
+			if app.statusMsg != "" {
+				app.Render()
+			}
 			continue
 		}
 
